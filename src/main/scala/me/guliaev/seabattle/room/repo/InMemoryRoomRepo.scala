@@ -1,5 +1,6 @@
 package me.guliaev.seabattle.room.repo
 
+import me.guliaev.seabattle.http.ApiError
 import me.guliaev.seabattle.room.{Room, RoomId}
 import zio._
 
@@ -19,7 +20,7 @@ final case class InMemoryRoomRepo(table: Ref[mutable.Map[RoomId, Room]]) extends
     table.get.map(_.get(id))
 
   override def findUnsafe(id: RoomId): Task[Room] =
-    find(id).someOrFail(new RuntimeException(s"Room is not found: $id"))
+    find(id).someOrFail(ApiError(s"Room is not found: $id"))
 
   override def delete(id: RoomId): Task[Unit] =
     table.update { s => s.remove(id); s }

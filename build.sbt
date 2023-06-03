@@ -1,7 +1,6 @@
 name := "sea-battle-zio"
 
-val appVersion = "0.3"
-ThisBuild / version := appVersion
+ThisBuild / version := "0.4"
 ThisBuild / organization := "me.guliaev"
 ThisBuild / scalaVersion := "2.13.10"
 
@@ -9,7 +8,7 @@ lazy val app = (project in file(".")).settings(
   Docker / packageName := packageName.value,
   Docker / version := version.value,
   Docker / dockerExposedPorts := Seq(8080),
-  assembly / assemblyJarName := s"sea-battle-zio-$appVersion.jar",
+  assembly / assemblyJarName := s"${name.value}-${version.value}.jar",
   assembly / mainClass := Some("me.guliaev.seabattle.Application"),
   assemblyMergeStrategy := { _ => MergeStrategy.first },
   libraryDependencies ++= (Seq(

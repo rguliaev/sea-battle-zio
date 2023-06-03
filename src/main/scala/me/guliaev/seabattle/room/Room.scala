@@ -13,8 +13,8 @@ object RoomId {
 }
 
 final case class Room(
-  id: RoomId = RoomId.random,
-  data: GameData = GameData()
+  id: RoomId,
+  data: GameData
 )
 
 object Room {
@@ -35,7 +35,7 @@ object Room {
     userData1: Option[UserData] = None,
     userData2: Option[UserData] = None,
     moveChannelId: Option[String] = None,
-    started: Boolean = false,
+    playersReady: Boolean = false,
     finished: Boolean = false
   ) {
     def userDataMap: Map[String, Seq[Ship]] =

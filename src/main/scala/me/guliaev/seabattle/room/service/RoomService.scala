@@ -23,7 +23,7 @@ trait RoomService {
     roomId: RoomId,
     ch: Channel[WebSocketFrame]
   ): ZIO[RoomRepo with ConnectionRepo, Throwable, Unit]
-  def start(): ZIO[RoomRepo, Throwable, RoomId]
+  def handleStart(): ZIO[RoomRepo, Throwable, RoomId]
 }
 
 object RoomService {
@@ -47,6 +47,6 @@ object RoomService {
   ): ZIO[RoomService with RoomRepo with ConnectionRepo, Throwable, Unit] =
     ZIO.serviceWithZIO[RoomService](_.handleUserReady(event, roomId, ch))
 
-  def start(): ZIO[RoomService with RoomRepo, Throwable, RoomId] =
-    ZIO.serviceWithZIO[RoomService](_.start())
+  def handleStart(): ZIO[RoomService with RoomRepo, Throwable, RoomId] =
+    ZIO.serviceWithZIO[RoomService](_.handleStart())
 }

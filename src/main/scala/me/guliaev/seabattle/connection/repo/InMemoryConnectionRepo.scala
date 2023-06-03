@@ -1,6 +1,7 @@
 package me.guliaev.seabattle.connection.repo
 
 import me.guliaev.seabattle.connection.Connection
+import me.guliaev.seabattle.http.ApiError
 import zio._
 import zio.http.Channel
 import zio.http.socket.WebSocketFrame
@@ -23,7 +24,7 @@ final case class InMemoryConnectionRepo(
     table.get.map(_.get(id).map(Connection(id, _)))
 
   override def findUnsafe(id: String): Task[Connection] =
-    find(id).someOrFail(new RuntimeException(s"Connection is not found: $id"))
+    find(id).someOrFail(ApiError(s"Connection is not found: $id"))
 
   override def delete(id: String): Task[Unit] =
     table.update { s => s.remove(id); s }

@@ -59,7 +59,7 @@ class RoomController {
   private val httpApp: App[RoomService with RoomRepo] =
     Http.collectZIO[Request] { case Method.POST -> !! / "start" =>
       RoomService
-        .start()
+        .handleStart()
         // TODO add on fly converter
         .mapError(ex => Response.json(ApiError(s"Something went wrong: ${ex.getMessage}").asJson.noSpaces))
         .map(roomId => Response.json(RoomIdResponse(roomId).asJson.noSpaces))

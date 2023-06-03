@@ -7,9 +7,10 @@ import me.guliaev.seabattle.room.Room.UserData
 import me.guliaev.seabattle.room.RoomController.ChannelJsonExtension
 import me.guliaev.seabattle.room.repo.RoomRepo
 import me.guliaev.seabattle.room.{Room, RoomId}
-import zio.{ZIO, ZLayer}
+import zio.{Task, ZIO, ZLayer}
 import zio.http.socket.WebSocketFrame
 import me.guliaev.seabattle.http.{
+  ApiError,
   EndGame,
   SetShips,
   Shot,
@@ -66,10 +67,10 @@ class RoomServiceImpl extends RoomService {
       room <- RoomRepo.findUnsafe(id)
       channelId <- ZIO
         .fromOption(room.data.moveChannelId.filter(_ == channel.id))
-        .mapError(_ => new RuntimeException("Inconsistent data"))
+        .mapError(_ => ApiError("Not your move"))
       enemyData <- ZIO
         .fromOption(room.data.userDataMap.find(_._1 != channelId))
-        .mapError(_ => new RuntimeException("Inconsistent data"))
+        .mapError(_ => ApiError("Inconsistent data"))
       (enemyChannelId, enemyShips) = enemyData
       enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
       shotResults = enemyShips.map(_.shot(shot.toPoint))
@@ -111,73 +112,71 @@ class RoomServiceImpl extends RoomService {
     roomId: RoomId,
     ch: Channel[WebSocketFrame]
   ): ZIO[ConnectionRepo with RoomRepo, Throwable, Unit] = {
-    RoomRepo.find(roomId).flatMap {
-      case Some(room) if !room.data.started && event.ships.nonEmpty =>
-        val newRoom = {
-          val temp =
-            if (room.data.userData1.exists(_.channelId == ch.id)) {
-              room.copy(data =
-                room.data.copy(
-                  userData1 = room.data.userData1.map(_.copy(ships = event.ships))
-                )
-              )
-            } else {
-              room.copy(data =
-                room.data.copy(
-                  userData2 = room.data.userData2.map(_.copy(ships = event.ships))
-                )
-              )
-            }
-          if (
-            temp.data.userData1.exists(
-              _.ships.nonEmpty
-            ) && temp.data.userData2.exists(_.ships.nonEmpty)
-          ) temp.copy(data = temp.data.copy(started = true))
-          else temp
-        }
-
+    RoomRepo.findUnsafe(roomId).flatMap { room =>
+      if (!room.data.playersReady) ZIO.fail(ApiError("Game is already started"))
+      else {
         for {
-          _ <- RoomRepo.update(newRoom.id, newRoom)
+          room <- (room.data.userData1, room.data.userData2) match {
+            case (Some(UserData(channelId, _)), userData2Opt) if channelId == ch.id =>
+              ZIO.succeed(
+                room.copy(data =
+                  room.data.copy(
+                    userData1 = room.data.userData1.map(_.copy(ships = event.ships)),
+                    playersReady = userData2Opt.exists(_.ships.nonEmpty)
+                  )
+                )
+              )
+            case (userData1Opt, Some(UserData(channelId, _))) if channelId == ch.id =>
+              ZIO.succeed(
+                room.copy(data =
+                  room.data.copy(
+                    userData2 = room.data.userData2.map(_.copy(ships = event.ships)),
+                    playersReady = userData1Opt.exists(_.ships.nonEmpty)
+                  )
+                )
+              )
+            case _ => ZIO.fail(ApiError(s"No channelId registered: ${ch.id}"))
+          }
+          updatedRoom <- RoomRepo.update(room.id, room)
           _ <-
-            if (newRoom.data.started)
-              (
-                newRoom.data.userData1.map(_.channelId),
-                newRoom.data.userData2.map(_.channelId)
-              ) match {
-                case (Some(channel1), Some(channel2)) =>
-                  ZIO
-                    .collectAllPar(
-                      Seq(
-                        ConnectionRepo.findUnsafe(channel1),
-                        ConnectionRepo.findUnsafe(channel2)
-                      )
-                    )
-                    .flatMap(seq =>
-                      ZIO.collectAllParDiscard(
-                        seq.map { connection =>
-                          for {
-                            _ <- connection.channel.sendJson(StartGame)
-                            _ <-
-                              if (
-                                newRoom.data.moveChannelId
-                                  .contains(connection.id)
-                              ) {
-                                connection.channel.sendJson(YourMove)
-                              } else ZIO.unit
-                          } yield ()
-                        }
-                      )
-                    )
-                case _ =>
-                  ZIO.unit
-              }
+            if (updatedRoom.data.playersReady) startGame(updatedRoom)
             else ZIO.unit
         } yield ()
-      case x => ZIO.logInfo(s"Wrong! ($x)")
+      }
     }
   }
 
-  def start(): ZIO[RoomRepo, Throwable, RoomId] =
+  private def startGame(room: Room): ZIO[ConnectionRepo, Throwable, Unit] =
+    (
+      room.data.userData1.map(_.channelId),
+      room.data.userData2.map(_.channelId)
+    ) match {
+      case (Some(channel1), Some(channel2)) =>
+        ZIO
+          .collectAllPar(
+            Seq(
+              ConnectionRepo.findUnsafe(channel1),
+              ConnectionRepo.findUnsafe(channel2)
+            )
+          )
+          .flatMap(seq =>
+            ZIO.collectAllParDiscard(
+              seq.map { connection =>
+                for {
+                  _ <- connection.channel.sendJson(StartGame)
+                  _ <-
+                    if (room.data.moveChannelId.contains(connection.id)) {
+                      connection.channel.sendJson(YourMove)
+                    } else ZIO.unit
+                } yield ()
+              }
+            )
+          )
+      case _ =>
+        ZIO.fail(ApiError("Cannot find connections"))
+    }
+
+  def handleStart(): ZIO[RoomRepo, Throwable, RoomId] =
     RoomRepo
       .insert(Room.create)
       .map(_.id)

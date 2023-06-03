@@ -15,7 +15,7 @@ import zio.http.socket.WebSocketFrame
 class RoomServiceSpec extends AnyFlatSpec with MockFactory with ZioRunner {
   "RoomService" should "start" in new Wiring {
     (roomRepoMock.insert _).expects(*).returning(ZIO.succeed(room))
-    val result: RoomId = run(RoomService.start().provide(RoomServiceImpl.layer, roomRepoLayer))
+    val result: RoomId = run(RoomService.handleStart().provide(RoomServiceImpl.layer, roomRepoLayer))
     assert(result == room.id)
   }
 
@@ -69,7 +69,7 @@ class RoomServiceSpec extends AnyFlatSpec with MockFactory with ZioRunner {
     val channelMock2: Channel[WebSocketFrame] = mock[Channel[WebSocketFrame]]
     val connection1: Connection = Connection("connection1", channelMock1)
     val connection2: Connection = Connection("connection2", channelMock2)
-    val room: Room = Room(RoomId.random)
+    val room: Room = Room.create
     val roomRepoMock: RoomRepo = mock[RoomRepo]
     val roomRepoLayer: ZLayer[Any, Nothing, RoomRepo] = ZLayer.fromZIO(ZIO.succeed(roomRepoMock))
     val connectionRepoMock: ConnectionRepo = mock[ConnectionRepo]

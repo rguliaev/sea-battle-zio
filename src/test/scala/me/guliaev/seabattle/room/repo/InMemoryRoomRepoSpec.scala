@@ -67,6 +67,6 @@ class InMemoryRoomRepoSpec extends AnyFlatSpec with MockFactory with ZioRunner {
   }
 
   trait Wiring {
-    val room: Room = Room(RoomId.random)
+    val room: Room = Room.create
   }
 }

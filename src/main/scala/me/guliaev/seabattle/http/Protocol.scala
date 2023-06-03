@@ -16,5 +16,5 @@ final case class ShotResult(x: Int, y: Int, hit: Boolean) extends WsEvent
 final case class EndGame(win: Boolean) extends WsEvent
 
 sealed trait ApiResponse
-final case class ApiError(message: String) extends ApiResponse with WsEvent
+final case class ApiError(message: String) extends RuntimeException(message) with ApiResponse with WsEvent
 final case class RoomIdResponse(roomId: RoomId) extends ApiResponse
