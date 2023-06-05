@@ -12,9 +12,14 @@ case object WaitForSecondPlayer extends WsEvent
 case object StartGame extends WsEvent
 case object SetShips extends WsEvent
 case object YourMove extends WsEvent
+case object Disconnected extends WsEvent
 final case class ShotResult(x: Int, y: Int, hit: Boolean) extends WsEvent
 final case class EndGame(win: Boolean) extends WsEvent
 
 sealed trait ApiResponse
 final case class ApiError(message: String) extends RuntimeException(message) with ApiResponse with WsEvent
+object ApiError {
+  case object GameAlreadyStarted extends RuntimeException("Game is already started")
+
+}
 final case class RoomIdResponse(roomId: RoomId) extends ApiResponse

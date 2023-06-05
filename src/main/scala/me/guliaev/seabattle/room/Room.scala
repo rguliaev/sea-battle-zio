@@ -35,13 +35,16 @@ object Room {
     userData1: Option[UserData] = None,
     userData2: Option[UserData] = None,
     moveChannelId: Option[String] = None,
-    playersReady: Boolean = false,
+    started: Boolean = false,
     finished: Boolean = false
   ) {
-    def userDataMap: Map[String, Seq[Ship]] =
+    def userShipMap: Map[String, Seq[Ship]] =
       Seq(userData1, userData2).collect { case Some(value) =>
         value.channelId -> value.ships
       }.toMap
+
+    def connectionIds: Seq[String] =
+      Seq(userData1, userData2).collect { case Some(value) => value.channelId }
 
     def updateShips(channelId: String, ships: Seq[Ship]): GameData =
       copy(

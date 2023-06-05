@@ -3,23 +3,14 @@ package me.guliaev.seabattle.room.service
 import io.circe.generic.extras.auto._
 import me.guliaev.seabattle.connection.Connection
 import me.guliaev.seabattle.connection.repo.ConnectionRepo
+import me.guliaev.seabattle.http.ApiError.GameAlreadyStarted
 import me.guliaev.seabattle.room.Room.UserData
 import me.guliaev.seabattle.room.RoomController.ChannelJsonExtension
 import me.guliaev.seabattle.room.repo.RoomRepo
 import me.guliaev.seabattle.room.{Room, RoomId}
 import zio.{Task, ZIO, ZLayer}
 import zio.http.socket.WebSocketFrame
-import me.guliaev.seabattle.http.{
-  ApiError,
-  EndGame,
-  SetShips,
-  Shot,
-  ShotResult,
-  StartGame,
-  UserReady,
-  WaitForSecondPlayer,
-  YourMove
-}
+import me.guliaev.seabattle.http.{ApiError, EndGame, SetShips, Shot, ShotResult, StartGame, UserReady, WaitForSecondPlayer, YourMove}
 import zio.http.Channel
 import me.guliaev.seabattle.room.RoomController._
 
@@ -40,7 +31,6 @@ class RoomServiceImpl extends RoomService {
           ConnectionRepo.insert(Connection(channelId, channel)) *>
             RoomRepo.update(roomId, room.copy(data = gameData)) *>
             channel.sendJson(WaitForSecondPlayer)
-
         case Some(room @ Room(_, data @ Room.GameData(Some(userData1), None, Some(_), _, _))) =>
           val channelId = channel.id
           val gameData =
@@ -69,7 +59,7 @@ class RoomServiceImpl extends RoomService {
         .fromOption(room.data.moveChannelId.filter(_ == channel.id))
         .mapError(_ => ApiError("Not your move"))
       enemyData <- ZIO
-        .fromOption(room.data.userDataMap.find(_._1 != channelId))
+        .fromOption(room.data.userShipMap.find(_._1 != channelId))
         .mapError(_ => ApiError("Inconsistent data"))
       (enemyChannelId, enemyShips) = enemyData
       enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
@@ -113,7 +103,7 @@ class RoomServiceImpl extends RoomService {
     ch: Channel[WebSocketFrame]
   ): ZIO[ConnectionRepo with RoomRepo, Throwable, Unit] = {
     RoomRepo.findUnsafe(roomId).flatMap { room =>
-      if (!room.data.playersReady) ZIO.fail(ApiError("Game is already started"))
+      if (room.data.started) ZIO.fail(GameAlreadyStarted)
       else {
         for {
           room <- (room.data.userData1, room.data.userData2) match {
@@ -122,7 +112,7 @@ class RoomServiceImpl extends RoomService {
                 room.copy(data =
                   room.data.copy(
                     userData1 = room.data.userData1.map(_.copy(ships = event.ships)),
-                    playersReady = userData2Opt.exists(_.ships.nonEmpty)
+                    started = userData2Opt.exists(_.ships.nonEmpty)
                   )
                 )
               )
@@ -131,16 +121,14 @@ class RoomServiceImpl extends RoomService {
                 room.copy(data =
                   room.data.copy(
                     userData2 = room.data.userData2.map(_.copy(ships = event.ships)),
-                    playersReady = userData1Opt.exists(_.ships.nonEmpty)
+                    started = userData1Opt.exists(_.ships.nonEmpty)
                   )
                 )
               )
             case _ => ZIO.fail(ApiError(s"No channelId registered: ${ch.id}"))
           }
           updatedRoom <- RoomRepo.update(room.id, room)
-          _ <-
-            if (updatedRoom.data.playersReady) startGame(updatedRoom)
-            else ZIO.unit
+          _ <- if (updatedRoom.data.started) startGame(updatedRoom) else ZIO.unit
         } yield ()
       }
     }

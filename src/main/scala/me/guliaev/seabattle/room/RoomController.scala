@@ -3,7 +3,7 @@ package me.guliaev.seabattle.room
 import me.guliaev.seabattle.connection.repo.ConnectionRepo
 import me.guliaev.seabattle.http._
 import me.guliaev.seabattle.room.repo.RoomRepo
-import zio.{Task, ZIO}
+import zio._
 import zio.http.ChannelEvent.{ChannelRead, ChannelUnregistered, UserEventTriggered}
 import zio.http.ChannelEvent.UserEvent.{HandshakeComplete, HandshakeTimeout}
 import zio.http.model.Method
@@ -18,7 +18,7 @@ import io.circe.parser._
 import me.guliaev.seabattle.room.service.RoomService
 
 class RoomController {
-  def createWsApp(roomId: RoomId): Http[
+  private def createWsApp(roomId: RoomId): Http[
     RoomService with RoomRepo with ConnectionRepo,
     Throwable,
     WebSocketChannelEvent,
@@ -44,9 +44,18 @@ class RoomController {
           case msg => ZIO.logInfo("Unknown message: " + msg)
         }
       case ChannelEvent(ch, ChannelUnregistered) =>
-        RoomRepo
-          .delete(roomId)
-          .flatMap(_ => ZIO.logInfo(s"ChannelUnregistered: ${ch.id}"))
+        for {
+          room <- RoomRepo.findUnsafe(roomId)
+          enemyChannelId <- ZIO
+            .succeed(room.data.connectionIds.find(_ != ch.id))
+            .someOrFail(ApiError("Inconsistent data"))
+          enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
+          _ <- enemyConnection.channel.sendJson(Disconnected)
+          _ <- RoomRepo
+            .delete(roomId)
+            .flatMap(_ => ZIO.logInfo(s"ChannelUnregistered: ${ch.id}"))
+        } yield ()
+
     }
   }
 

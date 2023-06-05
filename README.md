@@ -7,8 +7,8 @@ This is demo project for learning purpose.
 How to build: 
 1. Docker:
 - sbt docker:publishLocal
-- docker run -p 80:8080 sea-battle-zio:0.4
+- docker run -p 80:8080 sea-battle-zio:x.x.x
 
 2. Jar:
 - sbt assembly
-- java -cp target/scala-2.13/sea-battle-zio-0.4.jar me.guliaev.seabattle.Application
+- java -cp target/scala-2.13/sea-battle-zio-x.x.x.jar me.guliaev.seabattle.Application
