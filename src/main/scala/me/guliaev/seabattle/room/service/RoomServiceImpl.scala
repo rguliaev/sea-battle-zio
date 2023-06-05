@@ -3,16 +3,15 @@ package me.guliaev.seabattle.room.service
 import io.circe.generic.extras.auto._
 import me.guliaev.seabattle.connection.Connection
 import me.guliaev.seabattle.connection.repo.ConnectionRepo
-import me.guliaev.seabattle.http.ApiError.GameAlreadyStarted
+import me.guliaev.seabattle.http.ApiError.{ChannelNotFound, GameAlreadyStarted, InconsistentData, NotYourMove}
 import me.guliaev.seabattle.room.Room.UserData
-import me.guliaev.seabattle.room.RoomController.ChannelJsonExtension
 import me.guliaev.seabattle.room.repo.RoomRepo
 import me.guliaev.seabattle.room.{Room, RoomId}
-import zio.{Task, ZIO, ZLayer}
+import zio.{ZIO, ZLayer}
 import zio.http.socket.WebSocketFrame
-import me.guliaev.seabattle.http.{ApiError, EndGame, SetShips, Shot, ShotResult, StartGame, UserReady, WaitForSecondPlayer, YourMove}
+import me.guliaev.seabattle.http._
+import me.guliaev.seabattle.room.controller.BaseController._
 import zio.http.Channel
-import me.guliaev.seabattle.room.RoomController._
 
 class RoomServiceImpl extends RoomService {
   def handleHandshake(
@@ -57,10 +56,10 @@ class RoomServiceImpl extends RoomService {
       room <- RoomRepo.findUnsafe(id)
       channelId <- ZIO
         .fromOption(room.data.moveChannelId.filter(_ == channel.id))
-        .mapError(_ => ApiError("Not your move"))
+        .mapError(_ => NotYourMove)
       enemyData <- ZIO
         .fromOption(room.data.userShipMap.find(_._1 != channelId))
-        .mapError(_ => ApiError("Inconsistent data"))
+        .mapError(_ => InconsistentData)
       (enemyChannelId, enemyShips) = enemyData
       enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
       shotResults = enemyShips.map(_.shot(shot.toPoint))
@@ -125,7 +124,7 @@ class RoomServiceImpl extends RoomService {
                   )
                 )
               )
-            case _ => ZIO.fail(ApiError(s"No channelId registered: ${ch.id}"))
+            case _ => ZIO.fail(ChannelNotFound)
           }
           updatedRoom <- RoomRepo.update(room.id, room)
           _ <- if (updatedRoom.data.started) startGame(updatedRoom) else ZIO.unit
@@ -161,7 +160,7 @@ class RoomServiceImpl extends RoomService {
             )
           )
       case _ =>
-        ZIO.fail(ApiError("Cannot find connections"))
+        ZIO.fail(InconsistentData)
     }
 
   def handleStart(): ZIO[RoomRepo, Throwable, RoomId] =

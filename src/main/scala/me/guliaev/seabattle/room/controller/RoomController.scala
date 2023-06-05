@@ -1,23 +1,22 @@
-package me.guliaev.seabattle.room
+package me.guliaev.seabattle.room.controller
 
+import io.circe.generic.extras.auto._
+import io.circe.parser._
+import io.circe.syntax._
 import me.guliaev.seabattle.connection.repo.ConnectionRepo
+import me.guliaev.seabattle.http.ApiError.InconsistentData
 import me.guliaev.seabattle.http._
+import me.guliaev.seabattle.room.RoomId
 import me.guliaev.seabattle.room.repo.RoomRepo
+import me.guliaev.seabattle.room.service.RoomService
 import zio._
-import zio.http.ChannelEvent.{ChannelRead, ChannelUnregistered, UserEventTriggered}
 import zio.http.ChannelEvent.UserEvent.{HandshakeComplete, HandshakeTimeout}
+import zio.http.ChannelEvent.{ChannelRead, ChannelUnregistered, UserEventTriggered}
+import zio.http._
 import zio.http.model.Method
 import zio.http.socket.{WebSocketChannelEvent, WebSocketFrame}
-import zio.http._
-import io.circe._
-import io.circe.generic.extras.Configuration
-import io.circe.generic.extras.auto._
-import io.circe.syntax._
-import me.guliaev.seabattle.room.RoomController._
-import io.circe.parser._
-import me.guliaev.seabattle.room.service.RoomService
 
-class RoomController {
+class RoomController extends BaseController {
   private def createWsApp(roomId: RoomId): Http[
     RoomService with RoomRepo with ConnectionRepo,
     Throwable,
@@ -35,7 +34,6 @@ class RoomController {
       case ChannelEvent(ch, ChannelRead(WebSocketFrame.Text(msg))) =>
         parse(msg).flatMap(_.as[WsEvent]) match {
           case Right(event @ UserReady(ships)) if ships.nonEmpty => RoomService.handleUserReady(event, roomId, ch)
-          case Right(UserReady(Nil))                             => ch.sendJson(ApiError("No ships defined"))
           case Right(event @ Shot(_, _))                         => RoomService.handleShot(event, roomId, ch)
           case Left(error) =>
             ZIO.logError(error.getMessage) *> ch.sendJson(
@@ -48,12 +46,11 @@ class RoomController {
           room <- RoomRepo.findUnsafe(roomId)
           enemyChannelId <- ZIO
             .succeed(room.data.connectionIds.find(_ != ch.id))
-            .someOrFail(ApiError("Inconsistent data"))
+            .someOrFail(InconsistentData)
           enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
           _ <- enemyConnection.channel.sendJson(Disconnected)
-          _ <- RoomRepo
-            .delete(roomId)
-            .flatMap(_ => ZIO.logInfo(s"ChannelUnregistered: ${ch.id}"))
+          _ <- RoomRepo.delete(roomId)
+          _ <- ZIO.logInfo(s"ChannelUnregistered: ${ch.id}")
         } yield ()
 
     }
@@ -80,16 +77,4 @@ class RoomController {
     Request,
     Response
   ] = wsApp ++ httpApp
-}
-
-object RoomController {
-  implicit val jsonConfig: Configuration =
-    Configuration.default.withDiscriminator("type")
-
-  implicit class ChannelJsonExtension(ch: Channel[WebSocketFrame]) {
-    def sendJson(body: WsEvent)(implicit
-      encoder: Encoder[WsEvent]
-    ): Task[Unit] =
-      ch.writeAndFlush(WebSocketFrame.text(body.asJson.noSpaces))
-  }
 }

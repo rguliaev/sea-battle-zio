@@ -1,7 +1,7 @@
 package me.guliaev.seabattle
 
 import me.guliaev.seabattle.connection.repo.InMemoryConnectionRepo
-import me.guliaev.seabattle.room.RoomController
+import me.guliaev.seabattle.room.controller.RoomController
 import me.guliaev.seabattle.room.repo.InMemoryRoomRepo
 import me.guliaev.seabattle.room.service.RoomServiceImpl
 import pureconfig._

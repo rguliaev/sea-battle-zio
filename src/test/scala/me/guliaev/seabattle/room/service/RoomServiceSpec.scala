@@ -15,8 +15,8 @@ import zio.http.socket.WebSocketFrame
 import io.circe.generic.extras.auto._
 import io.circe.syntax._
 import me.guliaev.seabattle.http.ApiError.GameAlreadyStarted
-import me.guliaev.seabattle.room.RoomController._
 import org.scalatest.EitherValues
+import me.guliaev.seabattle.room.controller.BaseController._
 
 class RoomServiceSpec extends AnyFlatSpec with MockFactory with ZioRunner with EitherValues {
   "start" should "create room" in new Wiring {
