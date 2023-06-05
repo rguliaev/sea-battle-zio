@@ -24,6 +24,7 @@ object ApiError {
   object GameAlreadyStarted extends ApiError("Game is already started")
   object NotYourMove extends ApiError("Not your move")
   object InconsistentData extends ApiError("Inconsistent data")
-  object ChannelNotFound extends ApiError("Channel not found")
-  object ConnectionNotFound extends ApiError("Connection not found")
+  object ChannelNotFound extends ApiError("Channel is not found")
+  object ConnectionNotFound extends ApiError("Connection is not found")
+  object RoomNotFound extends ApiError("Room is not found")
 }

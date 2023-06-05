@@ -3,7 +3,17 @@ package me.guliaev.seabattle.room.service
 import me.guliaev.seabattle.ZioRunner
 import me.guliaev.seabattle.connection.Connection
 import me.guliaev.seabattle.connection.repo.ConnectionRepo
-import me.guliaev.seabattle.http.{ApiError, SetShips, StartGame, UserReady, WaitForSecondPlayer, WsEvent, YourMove}
+import me.guliaev.seabattle.http.{
+  EndGame,
+  SetShips,
+  Shot,
+  ShotResult,
+  StartGame,
+  UserReady,
+  WaitForSecondPlayer,
+  WsEvent,
+  YourMove
+}
 import me.guliaev.seabattle.room.Room._
 import me.guliaev.seabattle.room.repo.RoomRepo
 import me.guliaev.seabattle.room.{Room, RoomId}
@@ -14,7 +24,7 @@ import zio.http.Channel
 import zio.http.socket.WebSocketFrame
 import io.circe.generic.extras.auto._
 import io.circe.syntax._
-import me.guliaev.seabattle.http.ApiError.GameAlreadyStarted
+import me.guliaev.seabattle.http.ApiError.{GameAlreadyStarted, NotYourMove}
 import org.scalatest.EitherValues
 import me.guliaev.seabattle.room.controller.BaseController._
 
@@ -204,7 +214,180 @@ class RoomServiceSpec extends AnyFlatSpec with MockFactory with ZioRunner with E
     }
   }
 
-  // TODO handleShot
+  "handleShot" should "fail with NotYourMove" in new Wiring {
+    val shotEvent: Shot = Shot(10, 10)
+    val testRoom: Room = room.copy(data =
+      GameData(
+        userData1 = Some(UserData(connection1.id, Nil)),
+        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
+        moveChannelId = Some(connection1.id),
+        started = true
+      )
+    )
+
+    (roomRepoMock.findUnsafe _).expects(room.id).returning(ZIO.succeed(testRoom))
+    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id)
+
+    val result: Either[Throwable, Unit] = runToEither(
+      RoomService
+        .handleShot(shotEvent, room.id, channelMock2)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+
+    result.left.value match {
+      case FiberFailure(Cause.Fail(NotYourMove, _)) => succeed
+      case x                                        => println(x); fail()
+    }
+  }
+
+  it should "fail with InconsistentData" in new Wiring {
+    val shotEvent: Shot = Shot(10, 10)
+    val testRoom: Room = room.copy(data =
+      GameData(
+        userData1 = Some(UserData(connection1.id, Nil)),
+        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
+        moveChannelId = Some(connection1.id),
+        started = true
+      )
+    )
+
+    (roomRepoMock.findUnsafe _).expects(room.id).returning(ZIO.succeed(testRoom))
+    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id)
+    val result: Either[Throwable, Unit] = runToEither(
+      RoomService
+        .handleShot(shotEvent, room.id, channelMock2)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+
+    result.left.value match {
+      case FiberFailure(Cause.Fail(NotYourMove, _)) => succeed
+      case _                                        => fail()
+    }
+  }
+
+  it should "handle hit" in new Wiring {
+    val shotEvent: Shot = Shot(10, 10)
+    val testRoom: Room = room.copy(data =
+      GameData(
+        userData1 = Some(UserData(connection1.id, Nil)),
+        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
+        moveChannelId = Some(connection1.id),
+        started = true
+      )
+    )
+    val expectedRoom: Room = room.copy(data =
+      testRoom.data.copy(
+        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(11, 11))))))
+      )
+    )
+    val expectedHitWsFrame: WebSocketFrame =
+      WebSocketFrame.text((ShotResult(10, 10, hit = true): WsEvent).asJson.noSpaces)
+
+    (roomRepoMock.findUnsafe _).expects(room.id).returning(ZIO.succeed(testRoom))
+    (connectionRepoMock.findUnsafe _).expects(connection2.id).returning(ZIO.succeed(connection2))
+    (roomRepoMock.update _).expects(room.id, expectedRoom).returning(ZIO.succeed(expectedRoom))
+    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id)
+    (channelMock1
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedHitWsFrame, *, *)
+      .returning(ZIO.unit)
+    (channelMock2
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedHitWsFrame, *, *)
+      .returning(ZIO.unit)
+
+    run(
+      RoomService
+        .handleShot(shotEvent, room.id, channelMock1)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+  }
+
+  it should "handle miss" in new Wiring {
+    val shotEvent: Shot = Shot(10, 10)
+    val testRoom: Room = room.copy(data =
+      GameData(
+        userData1 = Some(UserData(connection1.id, Nil)),
+        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(11, 11)))))),
+        moveChannelId = Some(connection1.id),
+        started = true
+      )
+    )
+    val expectedRoom: Room = testRoom.copy(data = testRoom.data.copy(moveChannelId = Some(connection2.id)))
+    val expectedShotResultWsFrame: WebSocketFrame =
+      WebSocketFrame.text((ShotResult(10, 10, hit = false): WsEvent).asJson.noSpaces)
+    val expectedYourMoveWsFrame: WebSocketFrame = WebSocketFrame.text((YourMove: WsEvent).asJson.noSpaces)
+
+    (roomRepoMock.findUnsafe _).expects(room.id).returning(ZIO.succeed(testRoom))
+    (connectionRepoMock.findUnsafe _).expects(connection2.id).returning(ZIO.succeed(connection2))
+    (roomRepoMock.update _).expects(room.id, expectedRoom).returning(ZIO.succeed(expectedRoom))
+    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id)
+    (channelMock1
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedShotResultWsFrame, *, *)
+      .returning(ZIO.unit)
+    (channelMock2
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedShotResultWsFrame, *, *)
+      .returning(ZIO.unit)
+    (channelMock2
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedYourMoveWsFrame, *, *)
+      .returning(ZIO.unit)
+
+    run(
+      RoomService
+        .handleShot(shotEvent, room.id, channelMock1)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+  }
+
+  it should "handle end game" in new Wiring {
+    val shotEvent: Shot = Shot(10, 10)
+    val testRoom: Room = room.copy(data =
+      GameData(
+        userData1 = Some(UserData(connection1.id, Nil)),
+        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10)))))),
+        moveChannelId = Some(connection1.id),
+        started = true
+      )
+    )
+    val expectedRoom: Room =
+      room.copy(data = testRoom.data.copy(userData2 = Some(UserData(connection2.id, Nil)), finished = true))
+    val expectedHitWsFrame: WebSocketFrame =
+      WebSocketFrame.text((ShotResult(10, 10, hit = true): WsEvent).asJson.noSpaces)
+    val expectedWinEndGameFrame: WebSocketFrame =
+      WebSocketFrame.text((EndGame(win = true): WsEvent).asJson.noSpaces)
+    val expectedLossEndGameFrame: WebSocketFrame =
+      WebSocketFrame.text((EndGame(win = false): WsEvent).asJson.noSpaces)
+
+    (roomRepoMock.findUnsafe _).expects(room.id).returning(ZIO.succeed(testRoom))
+    (connectionRepoMock.findUnsafe _).expects(connection2.id).returning(ZIO.succeed(connection2))
+    (roomRepoMock.update _).expects(room.id, expectedRoom).returning(ZIO.succeed(expectedRoom))
+    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id)
+    (channelMock1
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedHitWsFrame, *, *)
+      .returning(ZIO.unit)
+    (channelMock1
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedWinEndGameFrame, *, *)
+      .returning(ZIO.unit)
+    (channelMock2
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedHitWsFrame, *, *)
+      .returning(ZIO.unit)
+    (channelMock2
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedLossEndGameFrame, *, *)
+      .returning(ZIO.unit)
+
+    run(
+      RoomService
+        .handleShot(shotEvent, room.id, channelMock1)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+  }
 
   trait Wiring {
     val channelMock1: Channel[WebSocketFrame] = mock[Channel[WebSocketFrame]]

@@ -68,7 +68,11 @@ class RoomServiceImpl extends RoomService {
           if (shotResults.forall(_._2.points.isEmpty))
             RoomRepo.update(
               room.id,
-              room.copy(data = room.data.copy(finished = true))
+              room.copy(data =
+                room.data
+                  .copy(finished = true)
+                  .updateShips(enemyChannelId, Nil)
+              )
             ) *> ZIO.collectAllParDiscard(
               Seq(
                 channel.sendJson(ShotResult(shot.x, shot.y, hit = true)),
@@ -81,7 +85,7 @@ class RoomServiceImpl extends RoomService {
           else
             RoomRepo.update(
               room.id,
-              room.copy(data = room.data.updateShips(enemyChannelId, shotResults.map(_._2)))
+              room.copy(data = room.data.updateShips(enemyChannelId, shotResults.map(_._2).filter(_.points.nonEmpty)))
             ) *> ZIO.collectAllParDiscard(
               Seq(channel, enemyConnection.channel).map(_.sendJson(ShotResult(shot.x, shot.y, hit = true)))
             )
