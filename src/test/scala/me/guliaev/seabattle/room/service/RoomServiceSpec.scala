@@ -355,7 +355,7 @@ class RoomServiceSpec extends AnyFlatSpec with MockFactory with ZioRunner with E
     val expectedRoom: Room =
       room.copy(data = testRoom.data.copy(userData2 = Some(UserData(connection2.id, Nil)), finished = true))
     val expectedHitWsFrame: WebSocketFrame =
-      WebSocketFrame.text((ShotResult(10, 10, hit = true): WsEvent).asJson.noSpaces)
+      WebSocketFrame.text((ShotResult(10, 10, hit = true, kill = true): WsEvent).asJson.noSpaces)
     val expectedWinEndGameFrame: WebSocketFrame =
       WebSocketFrame.text((EndGame(win = true): WsEvent).asJson.noSpaces)
     val expectedLossEndGameFrame: WebSocketFrame =

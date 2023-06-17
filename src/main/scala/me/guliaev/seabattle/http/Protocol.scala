@@ -13,7 +13,7 @@ case object StartGame extends WsEvent
 case object SetShips extends WsEvent
 case object YourMove extends WsEvent
 case object Disconnected extends WsEvent
-final case class ShotResult(x: Int, y: Int, hit: Boolean) extends WsEvent
+final case class ShotResult(x: Int, y: Int, hit: Boolean, kill: Boolean = false) extends WsEvent
 final case class EndGame(win: Boolean) extends WsEvent
 
 sealed trait ApiResponse

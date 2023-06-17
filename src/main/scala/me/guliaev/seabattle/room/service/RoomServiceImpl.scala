@@ -75,11 +75,13 @@ class RoomServiceImpl extends RoomService {
               )
             ) *> ZIO.collectAllParDiscard(
               Seq(
-                channel.sendJson(ShotResult(shot.x, shot.y, hit = true)),
-                channel.sendJson(EndGame(win = true)),
+                channel.sendJson(ShotResult(shot.x, shot.y, hit = true, kill = true)) *> channel.sendJson(
+                  EndGame(win = true)
+                ),
                 enemyConnection.channel
-                  .sendJson(ShotResult(shot.x, shot.y, hit = true)),
-                enemyConnection.channel.sendJson(EndGame(win = false))
+                  .sendJson(ShotResult(shot.x, shot.y, hit = true, kill = true)) *> enemyConnection.channel.sendJson(
+                  EndGame(win = false)
+                )
               )
             )
           else
