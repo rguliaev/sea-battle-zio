@@ -66,7 +66,7 @@ class RoomServiceSpec extends AnyFlatSpec with MockFactory with ZioRunner with E
     val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((SetShips: WsEvent).asJson.noSpaces)
 
     (roomRepoMock.find _).expects(room.id).returning(ZIO.succeed(Some(roomWithUser)))
-    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id)
+    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id).twice()
     (connectionRepoMock.findUnsafe _).expects(connection1.id).returning(ZIO.succeed(connection1))
     (connectionRepoMock.insert _).expects(connection2).returning(ZIO.succeed(connection2))
     (roomRepoMock.update _).expects(room.id, updatedRoom).returning(ZIO.succeed(updatedRoom))
@@ -82,6 +82,26 @@ class RoomServiceSpec extends AnyFlatSpec with MockFactory with ZioRunner with E
     run(
       RoomService
         .handleHandshake(room.id, channelMock2)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+  }
+
+  it should "not add second user if the channel is the same" in new Wiring {
+    val gameData: GameData =
+      GameData(userData1 = Some(UserData(connection1.id, Nil)), moveChannelId = Some(connection1.id))
+
+    val roomWithUser: Room = room.copy(data = gameData)
+
+    (roomRepoMock.find _).expects(room.id).returning(ZIO.succeed(Some(roomWithUser)))
+    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id)
+    (channelMock1
+      .close(_: Boolean)(_: zio.Trace))
+      .expects(*, *)
+      .returning(ZIO.unit)
+
+    run(
+      RoomService
+        .handleHandshake(room.id, channelMock1)
         .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
     )
   }

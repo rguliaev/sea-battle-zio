@@ -30,7 +30,8 @@ class RoomServiceImpl extends RoomService {
           ConnectionRepo.insert(Connection(channelId, channel)) *>
             RoomRepo.update(roomId, room.copy(data = gameData)) *>
             channel.sendJson(WaitForSecondPlayer)
-        case Some(room @ Room(_, data @ Room.GameData(Some(userData1), None, Some(_), _, _))) =>
+        case Some(room @ Room(_, data @ Room.GameData(Some(userData1), None, Some(_), _, _)))
+            if userData1.channelId != channel.id =>
           val channelId = channel.id
           val gameData =
             data.copy(userData2 = Some(UserData(channelId, Nil)))
