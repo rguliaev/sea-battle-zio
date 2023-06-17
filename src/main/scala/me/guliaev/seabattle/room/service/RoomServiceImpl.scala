@@ -64,8 +64,8 @@ class RoomServiceImpl extends RoomService {
       (enemyChannelId, enemyShips) = enemyData
       enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
       shotResults = enemyShips.map(_.shot(shot.toPoint))
-      _ <-
-        if (shotResults.exists(_._1))
+      _ <- shotResults.find(_._1) match {
+        case Some((true, ship)) =>
           if (shotResults.forall(_._2.points.isEmpty))
             RoomRepo.update(
               room.id,
@@ -90,9 +90,11 @@ class RoomServiceImpl extends RoomService {
               room.id,
               room.copy(data = room.data.updateShips(enemyChannelId, shotResults.map(_._2).filter(_.points.nonEmpty)))
             ) *> ZIO.collectAllParDiscard(
-              Seq(channel, enemyConnection.channel).map(_.sendJson(ShotResult(shot.x, shot.y, hit = true)))
+              Seq(channel, enemyConnection.channel).map(
+                _.sendJson(ShotResult(shot.x, shot.y, hit = true, kill = ship.points.isEmpty))
+              )
             )
-        else
+        case _ =>
           RoomRepo.update(
             room.id,
             room.copy(data = room.data.copy(moveChannelId = Some(enemyChannelId)))
@@ -101,6 +103,7 @@ class RoomServiceImpl extends RoomService {
               _.sendJson(ShotResult(shot.x, shot.y, hit = false))
             ) :+ enemyConnection.channel.sendJson(YourMove)
           )
+      }
     } yield ()
 
   def handleUserReady(
