@@ -49,10 +49,15 @@ class RoomController extends BaseController {
             .someOrFail(InconsistentData)
           enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
           _ <- enemyConnection.channel.sendJson(Disconnected)
-          _ <- RoomRepo.delete(roomId)
+          updatedRoom = room.copy(
+            data = room.data.copy(
+              userData1 = room.data.userData1.filter(_.channelId != ch.id),
+              userData2 = room.data.userData2.filter(_.channelId != ch.id)
+            )
+          )
+          _ <- RoomRepo.update(roomId, updatedRoom)
           _ <- ZIO.logInfo(s"ChannelUnregistered: ${ch.id}")
         } yield ()
-
     }
   }
 

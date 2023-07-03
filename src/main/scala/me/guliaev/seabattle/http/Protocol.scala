@@ -11,6 +11,7 @@ final case class Shot(x: Int, y: Int) extends WsEvent {
 case object WaitForSecondPlayer extends WsEvent
 case object StartGame extends WsEvent
 case object SetShips extends WsEvent
+case object Continue extends WsEvent
 case object YourMove extends WsEvent
 case object Disconnected extends WsEvent
 final case class ShotResult(x: Int, y: Int, hit: Boolean, kill: Boolean = false) extends WsEvent

@@ -3,17 +3,7 @@ package me.guliaev.seabattle.room.service
 import me.guliaev.seabattle.ZioRunner
 import me.guliaev.seabattle.connection.Connection
 import me.guliaev.seabattle.connection.repo.ConnectionRepo
-import me.guliaev.seabattle.http.{
-  EndGame,
-  SetShips,
-  Shot,
-  ShotResult,
-  StartGame,
-  UserReady,
-  WaitForSecondPlayer,
-  WsEvent,
-  YourMove
-}
+import me.guliaev.seabattle.http.{Continue, EndGame, SetShips, Shot, ShotResult, StartGame, UserReady, WaitForSecondPlayer, WsEvent, YourMove}
 import me.guliaev.seabattle.room.Room._
 import me.guliaev.seabattle.room.repo.RoomRepo
 import me.guliaev.seabattle.room.{Room, RoomId}
@@ -42,7 +32,7 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((WaitForSecondPlayer: WsEvent).asJson.noSpaces)
 
     (roomRepoMock.find _).expects(room.id).returning(ZIO.succeed(Some(room)))
-    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id)
+    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id).anyNumberOfTimes()
     (roomRepoMock.update _).expects(room.id, updatedRoom).returning(ZIO.succeed(updatedRoom))
     (connectionRepoMock.insert _).expects(connection1).returning(ZIO.succeed(connection1))
     (channelMock1
@@ -66,7 +56,36 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((SetShips: WsEvent).asJson.noSpaces)
 
     (roomRepoMock.find _).expects(room.id).returning(ZIO.succeed(Some(roomWithUser)))
-    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id).twice()
+    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id).anyNumberOfTimes()
+    (connectionRepoMock.findUnsafe _).expects(connection1.id).returning(ZIO.succeed(connection1))
+    (connectionRepoMock.insert _).expects(connection2).returning(ZIO.succeed(connection2))
+    (roomRepoMock.update _).expects(room.id, updatedRoom).returning(ZIO.succeed(updatedRoom))
+    (channelMock1
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedWsFrame, *, *)
+      .returning(ZIO.unit)
+    (channelMock2
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedWsFrame, *, *)
+      .returning(ZIO.unit)
+
+    run(
+      RoomService
+        .handleHandshake(room.id, channelMock2)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+  }
+
+  it should "add second user after connection loss" in new Wiring {
+    val gameData: GameData =
+      GameData(userData1 = Some(UserData(connection1.id, Nil)), moveChannelId = Some(connection1.id), started = true)
+    val roomWithUser: Room = room.copy(data = gameData)
+    val updatedGameData: GameData = gameData.copy(userData2 = Some(UserData(connection2.id, Nil)))
+    val updatedRoom: Room = Room(room.id, data = updatedGameData)
+    val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((Continue: WsEvent).asJson.noSpaces)
+
+    (roomRepoMock.find _).expects(room.id).returning(ZIO.succeed(Some(roomWithUser)))
+    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id).anyNumberOfTimes()
     (connectionRepoMock.findUnsafe _).expects(connection1.id).returning(ZIO.succeed(connection1))
     (connectionRepoMock.insert _).expects(connection2).returning(ZIO.succeed(connection2))
     (roomRepoMock.update _).expects(room.id, updatedRoom).returning(ZIO.succeed(updatedRoom))
@@ -93,7 +112,7 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val roomWithUser: Room = room.copy(data = gameData)
 
     (roomRepoMock.find _).expects(room.id).returning(ZIO.succeed(Some(roomWithUser)))
-    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id)
+    (channelMock1.id(_: zio.Trace)).expects(*).returning(connection1.id).anyNumberOfTimes()
     (channelMock1
       .close(_: Boolean)(_: zio.Trace))
       .expects(*, *)

@@ -1,5 +1,5 @@
 Sea battle backend written in Scala using some pieces of ZIO ecosystem. 
-I am coding it because my friend is learning Frontend stack and with help of this project he knows what websocket is.
+I am coding this because my friend is learning Frontend stack and with help of this project he knows what websocket is.
 Wish him good luck in becoming a good Frontend engineer !
 
 This is demo project for learning purpose.

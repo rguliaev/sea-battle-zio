@@ -21,28 +21,43 @@ class RoomServiceImpl extends RoomService {
     for {
       roomOpt <- RoomRepo.find(roomId)
       _ <- roomOpt match {
-        case Some(room) if room.data.userData1.isEmpty =>
-          val channelId = channel.id
-          val gameData = room.data.copy(
-            userData1 = Some(UserData(channelId, Nil)),
-            moveChannelId = Some(channelId)
-          )
-          ConnectionRepo.insert(Connection(channelId, channel)) *>
-            RoomRepo.update(roomId, room.copy(data = gameData)) *>
-            channel.sendJson(WaitForSecondPlayer)
-        case Some(room @ Room(_, data @ Room.GameData(Some(userData1), None, Some(_), _, _)))
-            if userData1.channelId != channel.id =>
-          val channelId = channel.id
-          val gameData =
-            data.copy(userData2 = Some(UserData(channelId, Nil)))
-          for {
-            connection1 <- ConnectionRepo.findUnsafe(userData1.channelId)
-            connection2 <- ConnectionRepo.insert(Connection(channelId, channel))
-            _ <- RoomRepo.update(roomId, room.copy(data = gameData))
-            _ <- ZIO.collectAllParDiscard(
-              Seq(connection1.channel.sendJson(SetShips), connection2.channel.sendJson(SetShips))
-            )
-          } yield ()
+        case Some(room) =>
+          (room.data.userData1, room.data.userData2) match {
+            case (None, None) =>
+              val gameData = room.data.copy(
+                userData1 = Some(UserData(channel.id, Nil)),
+                moveChannelId = Some(channel.id)
+              )
+              ConnectionRepo.insert(Connection(channel.id, channel)) *>
+                RoomRepo.update(roomId, room.copy(data = gameData)) *>
+                channel.sendJson(WaitForSecondPlayer)
+
+            case (Some(userData1), None) if channel.id != userData1.channelId =>
+              val gameData =
+                room.data.copy(userData2 = Some(UserData(channel.id, Nil)))
+              for {
+                connection1 <- ConnectionRepo.findUnsafe(userData1.channelId)
+                connection2 <- ConnectionRepo.insert(Connection(channel.id, channel))
+                _ <- RoomRepo.update(roomId, room.copy(data = gameData))
+                message = if (!room.data.started) SetShips else Continue
+                _ <- ZIO.collectAllParDiscard(
+                  Seq(connection1.channel.sendJson(message), connection2.channel.sendJson(message))
+                )
+              } yield ()
+            case (None, Some(userData2)) if channel.id != userData2.channelId =>
+              val gameData =
+                room.data.copy(userData2 = Some(UserData(channel.id, Nil)))
+              for {
+                connection1 <- ConnectionRepo.findUnsafe(userData2.channelId)
+                connection2 <- ConnectionRepo.insert(Connection(channel.id, channel))
+                _ <- RoomRepo.update(roomId, room.copy(data = gameData))
+                message = if (!room.data.started) SetShips else Continue
+                _ <- ZIO.collectAllParDiscard(
+                  Seq(connection1.channel.sendJson(message), connection2.channel.sendJson(message))
+                )
+              } yield ()
+            case _ => channel.close(false)
+          }
         case _ => channel.close(false)
       }
     } yield ()
