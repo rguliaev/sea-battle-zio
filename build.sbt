@@ -1,6 +1,6 @@
 name := "sea-battle-zio"
 
-ThisBuild / version := "0.0.10"
+ThisBuild / version := "0.0.11"
 ThisBuild / organization := "me.guliaev"
 ThisBuild / scalaVersion := "2.13.10"
 
