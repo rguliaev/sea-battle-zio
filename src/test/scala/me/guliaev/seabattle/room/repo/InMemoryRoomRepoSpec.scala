@@ -19,7 +19,7 @@ class InMemoryRoomRepoSpec extends AnyFlatSpec with MockFactory with ZioRunner {
   }
 
   it should "update" in new Wiring {
-    val updated: Room = room.copy(data = GameData(Some(UserData("id", Nil))))
+    val updated: Room = room.copy(data = GameData(Some(UserData(Some("id"), Nil))))
     val result: Option[Room] = run(
       (for {
         _ <- RoomRepo.insert(room)

@@ -3,7 +3,19 @@ package me.guliaev.seabattle.room.service
 import me.guliaev.seabattle.ZioRunner
 import me.guliaev.seabattle.connection.Connection
 import me.guliaev.seabattle.connection.repo.ConnectionRepo
-import me.guliaev.seabattle.http.{Continue, EndGame, SetShips, Shot, ShotResult, StartGame, UserReady, WaitForSecondPlayer, WsEvent, YourMove}
+import me.guliaev.seabattle.http.{
+  Continue,
+  Disconnected,
+  EndGame,
+  SetShips,
+  Shot,
+  ShotResult,
+  StartGame,
+  UserReady,
+  WaitForSecondPlayer,
+  WsEvent,
+  YourMove
+}
 import me.guliaev.seabattle.room.Room._
 import me.guliaev.seabattle.room.repo.RoomRepo
 import me.guliaev.seabattle.room.{Room, RoomId}
@@ -27,7 +39,7 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
 
   "handleHandshake" should "add first user" in new Wiring {
     val gameData: GameData =
-      GameData(userData1 = Some(UserData(connection1.id, Nil)), moveChannelId = Some(connection1.id))
+      GameData(userData1 = Some(UserData(Some(connection1.id), Nil)), moveChannelId = Some(connection1.id))
     val updatedRoom: Room = Room(room.id, data = gameData)
     val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((WaitForSecondPlayer: WsEvent).asJson.noSpaces)
 
@@ -49,9 +61,9 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
 
   it should "add second user" in new Wiring {
     val gameData: GameData =
-      GameData(userData1 = Some(UserData(connection1.id, Nil)), moveChannelId = Some(connection1.id))
+      GameData(userData1 = Some(UserData(Some(connection1.id), Nil)), moveChannelId = Some(connection1.id))
     val roomWithUser: Room = room.copy(data = gameData)
-    val updatedGameData: GameData = gameData.copy(userData2 = Some(UserData(connection2.id, Nil)))
+    val updatedGameData: GameData = gameData.copy(userData2 = Some(UserData(Some(connection2.id), Nil)))
     val updatedRoom: Room = Room(room.id, data = updatedGameData)
     val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((SetShips: WsEvent).asJson.noSpaces)
 
@@ -78,9 +90,14 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
 
   it should "add second user after connection loss" in new Wiring {
     val gameData: GameData =
-      GameData(userData1 = Some(UserData(connection1.id, Nil)), moveChannelId = Some(connection1.id), started = true)
+      GameData(
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(None, Seq(Ship(Nil)))),
+        moveChannelId = Some(connection1.id),
+        started = true
+      )
     val roomWithUser: Room = room.copy(data = gameData)
-    val updatedGameData: GameData = gameData.copy(userData2 = Some(UserData(connection2.id, Nil)))
+    val updatedGameData: GameData = gameData.copy(userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Nil)))))
     val updatedRoom: Room = Room(room.id, data = updatedGameData)
     val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((Continue: WsEvent).asJson.noSpaces)
 
@@ -107,7 +124,7 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
 
   it should "not add second user if the channel is the same" in new Wiring {
     val gameData: GameData =
-      GameData(userData1 = Some(UserData(connection1.id, Nil)), moveChannelId = Some(connection1.id))
+      GameData(userData1 = Some(UserData(Some(connection1.id), Nil)), moveChannelId = Some(connection1.id))
 
     val roomWithUser: Room = room.copy(data = gameData)
 
@@ -139,8 +156,8 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
   it should "close channel if room is found, but it is full" in new Wiring {
     val gameData: GameData =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Nil)),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Nil)),
         moveChannelId = Some(connection1.id)
       )
     val fullRoom: Room = Room(room.id, data = gameData)
@@ -159,15 +176,15 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val userReadyEvent: UserReady = UserReady(Seq(Ship(Seq(Point(10, 10)))))
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Nil)),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Nil)),
         moveChannelId = Some(connection1.id)
       )
     )
     val expectedRoom: Room = testRoom.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, userReadyEvent.ships)),
-        userData2 = Some(UserData(connection2.id, Nil)),
+        userData1 = Some(UserData(Some(connection1.id), userReadyEvent.ships)),
+        userData2 = Some(UserData(Some(connection2.id), Nil)),
         moveChannelId = Some(connection1.id)
       )
     )
@@ -187,15 +204,15 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val userReadyEvent: UserReady = UserReady(Seq(Ship(Seq(Point(10, 10)))))
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, userReadyEvent.ships)),
-        userData2 = Some(UserData(connection2.id, Nil)),
+        userData1 = Some(UserData(Some(connection1.id), userReadyEvent.ships)),
+        userData2 = Some(UserData(Some(connection2.id), Nil)),
         moveChannelId = Some(connection1.id)
       )
     )
     val expectedRoom: Room = testRoom.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, userReadyEvent.ships)),
-        userData2 = Some(UserData(connection2.id, userReadyEvent.ships)),
+        userData1 = Some(UserData(Some(connection1.id), userReadyEvent.ships)),
+        userData2 = Some(UserData(Some(connection2.id), userReadyEvent.ships)),
         moveChannelId = Some(connection1.id),
         started = true
       )
@@ -232,8 +249,8 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val userReadyEvent: UserReady = UserReady(Seq(Ship(Seq(Point(10, 10)))))
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Nil)),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Nil)),
         moveChannelId = Some(connection1.id),
         started = true
       )
@@ -257,8 +274,8 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val shotEvent: Shot = Shot(10, 10)
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
         moveChannelId = Some(connection1.id),
         started = true
       )
@@ -283,8 +300,8 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val shotEvent: Shot = Shot(10, 10)
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
         moveChannelId = Some(connection1.id),
         started = true
       )
@@ -308,15 +325,15 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val shotEvent: Shot = Shot(10, 10)
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(10, 10), Point(11, 11)))))),
         moveChannelId = Some(connection1.id),
         started = true
       )
     )
     val expectedRoom: Room = room.copy(data =
       testRoom.data.copy(
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(11, 11))))))
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(11, 11))))))
       )
     )
     val expectedHitWsFrame: WebSocketFrame =
@@ -346,15 +363,15 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val shotEvent: Shot = Shot(10, 10)
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10))), Ship(Seq(Point(20, 20)))))),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(10, 10))), Ship(Seq(Point(20, 20)))))),
         moveChannelId = Some(connection1.id),
         started = true
       )
     )
     val expectedRoom: Room = room.copy(data =
       testRoom.data.copy(
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(20, 20))))))
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(20, 20))))))
       )
     )
     val expectedHitWsFrame: WebSocketFrame =
@@ -384,8 +401,8 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val shotEvent: Shot = Shot(10, 10)
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(11, 11)))))),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(11, 11)))))),
         moveChannelId = Some(connection1.id),
         started = true
       )
@@ -423,14 +440,14 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     val shotEvent: Shot = Shot(10, 10)
     val testRoom: Room = room.copy(data =
       GameData(
-        userData1 = Some(UserData(connection1.id, Nil)),
-        userData2 = Some(UserData(connection2.id, Seq(Ship(Seq(Point(10, 10)))))),
+        userData1 = Some(UserData(Some(connection1.id), Nil)),
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Seq(Point(10, 10)))))),
         moveChannelId = Some(connection1.id),
         started = true
       )
     )
     val expectedRoom: Room =
-      room.copy(data = testRoom.data.copy(userData2 = Some(UserData(connection2.id, Nil)), finished = true))
+      room.copy(data = testRoom.data.copy(userData2 = Some(UserData(Some(connection2.id), Nil)), finished = true))
     val expectedHitWsFrame: WebSocketFrame =
       WebSocketFrame.text((ShotResult(10, 10, hit = true, kill = true): WsEvent).asJson.noSpaces)
     val expectedWinEndGameFrame: WebSocketFrame =
@@ -462,6 +479,40 @@ class RoomServiceImplSpec extends AnyFlatSpec with MockFactory with ZioRunner wi
     run(
       RoomService
         .handleShot(shotEvent, room.id, channelMock1)
+        .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
+    )
+  }
+
+  "unRegisterChannel" should "work like a charm" in new Wiring {
+    val testRoom: Room = room.copy(data =
+      GameData(
+        userData1 = Some(UserData(Some(connection1.id), Seq(Ship(Nil)))),
+        userData2 = Some(UserData(Some(connection2.id), Seq(Ship(Nil)))),
+        moveChannelId = Some(connection1.id)
+      )
+    )
+    val expectedGameData: GameData =
+      GameData(
+        userData1 = Some(UserData(Some(connection1.id), Seq(Ship(Nil)))),
+        userData2 = Some(UserData(None, Seq(Ship(Nil)))),
+        moveChannelId = Some(connection1.id)
+      )
+    val updatedRoom: Room = Room(testRoom.id, data = expectedGameData)
+    val expectedWsFrame: WebSocketFrame = WebSocketFrame.text((Disconnected: WsEvent).asJson.noSpaces)
+
+    (connectionRepoMock.delete _).expects(connection2.id)
+    (roomRepoMock.findUnsafe _).expects(testRoom.id).returning(ZIO.succeed(testRoom))
+    (connectionRepoMock.findUnsafe _).expects(connection1.id).returning(ZIO.succeed(connection1))
+    (channelMock2.id(_: zio.Trace)).expects(*).returning(connection2.id).anyNumberOfTimes()
+    (roomRepoMock.update _).expects(testRoom.id, updatedRoom).returning(ZIO.succeed(updatedRoom))
+    (channelMock1
+      .writeAndFlush(_: WebSocketFrame, _: Boolean)(_: zio.Trace))
+      .expects(expectedWsFrame, *, *)
+      .returning(ZIO.unit)
+
+    run(
+      RoomService
+        .unRegisterChannel(testRoom.id, channelMock2)
         .provide(RoomServiceImpl.layer, roomRepoLayer, connectionRepoLayer)
     )
   }

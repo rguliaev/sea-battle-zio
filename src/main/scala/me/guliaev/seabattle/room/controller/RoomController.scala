@@ -41,23 +41,7 @@ class RoomController extends BaseController {
             )
           case msg => ZIO.logInfo("Unknown message: " + msg)
         }
-      case ChannelEvent(ch, ChannelUnregistered) =>
-        for {
-          room <- RoomRepo.findUnsafe(roomId)
-          enemyChannelId <- ZIO
-            .succeed(room.data.connectionIds.find(_ != ch.id))
-            .someOrFail(InconsistentData)
-          enemyConnection <- ConnectionRepo.findUnsafe(enemyChannelId)
-          _ <- enemyConnection.channel.sendJson(Disconnected)
-          updatedRoom = room.copy(
-            data = room.data.copy(
-              userData1 = room.data.userData1.filter(_.channelId != ch.id),
-              userData2 = room.data.userData2.filter(_.channelId != ch.id)
-            )
-          )
-          _ <- RoomRepo.update(roomId, updatedRoom)
-          _ <- ZIO.logInfo(s"ChannelUnregistered: ${ch.id}")
-        } yield ()
+      case ChannelEvent(ch, ChannelUnregistered) => RoomService.unRegisterChannel(roomId, ch)
     }
   }
 

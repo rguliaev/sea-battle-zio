@@ -24,6 +24,7 @@ trait RoomService {
     ch: Channel[WebSocketFrame]
   ): ZIO[RoomRepo with ConnectionRepo, Throwable, Unit]
   def handleStart(): ZIO[RoomRepo, Throwable, RoomId]
+  def unRegisterChannel(roomId: RoomId, ch: Channel[WebSocketFrame]): ZIO[RoomRepo with ConnectionRepo, Throwable, Unit]
 }
 
 object RoomService {
@@ -49,4 +50,10 @@ object RoomService {
 
   def handleStart(): ZIO[RoomService with RoomRepo, Throwable, RoomId] =
     ZIO.serviceWithZIO[RoomService](_.handleStart())
+
+  def unRegisterChannel(
+    roomId: RoomId,
+    ch: Channel[WebSocketFrame]
+  ): ZIO[RoomService with RoomRepo with ConnectionRepo, Throwable, Unit] =
+    ZIO.serviceWithZIO[RoomService](_.unRegisterChannel(roomId, ch))
 }

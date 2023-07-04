@@ -29,7 +29,7 @@ object Room {
       else (false, this)
   }
 
-  final case class UserData(channelId: String, ships: Seq[Ship])
+  final case class UserData(channelId: Option[String], ships: Seq[Ship])
 
   final case class GameData(
     userData1: Option[UserData] = None,
@@ -39,26 +39,26 @@ object Room {
     finished: Boolean = false
   ) {
     def userShipMap: Map[String, Seq[Ship]] =
-      Seq(userData1, userData2).collect { case Some(value) =>
-        value.channelId -> value.ships
+      Seq(userData1, userData2).collect { case Some(UserData(Some(channelId), ships)) =>
+        channelId -> ships
       }.toMap
 
     def connectionIds: Seq[String] =
-      Seq(userData1, userData2).collect { case Some(value) => value.channelId }
+      Seq(userData1, userData2).collect { case Some(UserData(Some(channelId), _)) => channelId }
 
     def updateShips(channelId: String, ships: Seq[Ship]): GameData =
       copy(
         userData1 = userData1
           .map(data =>
             data.copy(ships =
-              if (data.channelId == channelId) ships
+              if (data.channelId.contains(channelId)) ships
               else data.ships
             )
           ),
         userData2 = userData2
           .map(data =>
             data.copy(ships =
-              if (data.channelId == channelId) ships
+              if (data.channelId.contains(channelId)) ships
               else data.ships
             )
           )
